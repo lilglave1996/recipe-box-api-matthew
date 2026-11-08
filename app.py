@@ -1,13 +1,7 @@
-"""Recipe Box API — BE104 course skeleton.
-
-A working Flask + SQLite CRUD API for recipes. It stores data perfectly —
-and it trusts everyone. There is no authentication and no authorization yet.
-That is the point: you will add both, lesson by lesson, in Units 2 and 3.
-"""
-
 import sqlite3
 
 from flask import Flask, g, jsonify, request
+from werkzeug.security import generate_password_hash, check_password_hash
 
 DATABASE = "recipes.db"
 
@@ -85,6 +79,66 @@ def create_recipe():
     ).fetchone()
     return jsonify(recipe_to_dict(row)), 201
 
+@app.post("/register")
+def register():
+    data = request.get_json(silent=True)
+
+    if (
+        not data
+        or not data.get("username")
+        or not data.get("email")
+        or not data.get("password")
+    ):
+        return jsonify({"error": "username, email, and password are required"}), 400
+
+    password_hash = generate_password_hash(data["password"], method="pbkdf2:sha256")
+
+    db = get_db()
+    try:
+        cur = db.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+            (data["username"], data["email"], password_hash),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # we'll refine this to 409 & a nice message next
+        return jsonify({"error": "username or email already exists"}), 409
+
+    return (
+        jsonify(
+            {
+                "id": cur.lastrowid,
+                "username": data["username"],
+                "email": data["email"],
+            }
+        ),
+        201,
+    )
+@app.post("/login")
+def login():
+    data = request.get_json(silent=True) or {}
+
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "username and password are required"}), 400
+
+    db = get_db()
+    user = db.execute(
+        "SELECT id, username, password_hash FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+    
+    if user is None or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    return jsonify(
+        {
+            "id": user["id"],
+            "username": user["username"],
+        }
+    ), 200
 
 @app.patch("/recipes/<int:recipe_id>")
 def update_recipe(recipe_id):
@@ -129,4 +183,4 @@ def delete_recipe(recipe_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
