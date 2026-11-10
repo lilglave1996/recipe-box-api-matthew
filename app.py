@@ -55,10 +55,30 @@ def get_recipe(recipe_id):
 
 @app.post("/recipes")
 def create_recipe():
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header:
+        return jsonify({"error": "missing Authorization header"}), 401
+
+    parts = auth_header.split(" ", 1)
+    if len(parts) != 2 or parts[0] != "Bearer":
+        return jsonify({"error": "invalid Authorization header format"}), 401
+
+    token = parts[1]
+
+    try:
+        claims = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "invalid token"}), 401
+
+    user_id = claims.get("sub")
+
     data = request.get_json(silent=True)
     if not data or not data.get("title") or not data.get("ingredients"):
         return jsonify({"error": "title and ingredients are required"}), 400
+    
     db = get_db()
+
     try:
         cur = db.execute(
             "INSERT INTO recipes (title, ingredients, instructions, is_public)"
