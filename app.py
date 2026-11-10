@@ -1,12 +1,17 @@
-import sqlite3
+import sqlite3, os, jwt
 
 from flask import Flask, g, jsonify, request
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
+load_dotenv()
+
+JWT_SECRET = os.getenv("JWT_SECRET")
+print("Loaded JWT_SECRET:", repr(JWT_SECRET))
 DATABASE = "recipes.db"
 
 app = Flask(__name__)
-
 
 def get_db():
     if "db" not in g:
@@ -15,13 +20,11 @@ def get_db():
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
-
 @app.teardown_appcontext
 def close_db(exception):
     db = g.pop("db", None)
     if db is not None:
         db.close()
-
 
 def recipe_to_dict(row):
     return {
@@ -32,17 +35,14 @@ def recipe_to_dict(row):
         "is_public": bool(row["is_public"]),
     }
 
-
 @app.get("/")
 def hello():
     return jsonify({"message": "Recipe Box API", "recipes": "/recipes"})
-
 
 @app.get("/recipes")
 def list_recipes():
     rows = get_db().execute("SELECT * FROM recipes ORDER BY id").fetchall()
     return jsonify([recipe_to_dict(r) for r in rows])
-
 
 @app.get("/recipes/<int:recipe_id>")
 def get_recipe(recipe_id):
@@ -52,7 +52,6 @@ def get_recipe(recipe_id):
     if row is None:
         return jsonify({"error": "recipe not found"}), 404
     return jsonify(recipe_to_dict(row))
-
 
 @app.post("/recipes")
 def create_recipe():
@@ -114,6 +113,7 @@ def register():
         ),
         201,
     )
+
 @app.post("/login")
 def login():
     data = request.get_json(silent=True) or {}
@@ -133,10 +133,18 @@ def login():
     if user is None or not check_password_hash(user["password_hash"], password):
         return jsonify({"error": "Invalid credentials"}), 401
 
+    payload = {
+        "sub": str(user["id"]),  # subject must be a string
+        "exp": datetime.utcnow() + timedelta(hours=1),
+    }
+    
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
     return jsonify(
         {
             "id": user["id"],
             "username": user["username"],
+            "token": token,
         }
     ), 200
 
@@ -171,7 +179,6 @@ def update_recipe(recipe_id):
     ).fetchone()
     return jsonify(recipe_to_dict(row))
 
-
 @app.delete("/recipes/<int:recipe_id>")
 def delete_recipe(recipe_id):
     db = get_db()
@@ -180,7 +187,6 @@ def delete_recipe(recipe_id):
     if cur.rowcount == 0:
         return jsonify({"error": "recipe not found"}), 404
     return "", 204
-
 
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
