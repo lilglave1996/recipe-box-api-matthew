@@ -1,4 +1,5 @@
 import sqlite3, os, jwt
+from functools import wraps
 
 from flask import Flask, g, jsonify, request
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -34,6 +35,33 @@ def recipe_to_dict(row):
         "instructions": row["instructions"],
         "is_public": bool(row["is_public"]),
     }
+def require_auth(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get("Authorization")
+
+        if not auth_header:
+            return jsonify({"error": "missing Authorization header"}), 401
+
+        parts = auth_header.split(" ", 1)
+        if len(parts) != 2 or parts[0] != "Bearer":
+            return jsonify({"error": "invalid Authorization header format"}), 401
+
+        token = parts[1]
+
+        try:
+            claims = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "token expired, please log in again"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "invalid token"}), 401
+
+        g.current_user_id = claims.get("sub")
+        g.current_role = claims.get("role")
+
+        return fn(*args, **kwargs)
+
+    return wrapper
 
 @app.get("/")
 def hello():
@@ -54,24 +82,9 @@ def get_recipe(recipe_id):
     return jsonify(recipe_to_dict(row))
 
 @app.post("/recipes")
+@require_auth
 def create_recipe():
-    auth_header = request.headers.get("Authorization")
-
-    if not auth_header:
-        return jsonify({"error": "missing Authorization header"}), 401
-
-    parts = auth_header.split(" ", 1)
-    if len(parts) != 2 or parts[0] != "Bearer":
-        return jsonify({"error": "invalid Authorization header format"}), 401
-
-    token = parts[1]
-
-    try:
-        claims = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "invalid token"}), 401
-
-    user_id = claims.get("sub")
+    user_id = g.current_user_id  # came from the token
 
     data = request.get_json(silent=True)
     if not data or not data.get("title") or not data.get("ingredients"):
@@ -81,13 +94,14 @@ def create_recipe():
 
     try:
         cur = db.execute(
-            "INSERT INTO recipes (title, ingredients, instructions, is_public)"
-            " VALUES (?, ?, ?, ?)",
+            "INSERT INTO recipes (title, ingredients, instructions, is_public, owner_id)"
+            " VALUES (?, ?, ?, ?, ?)",
             (
                 data["title"],
                 data["ingredients"],
                 data.get("instructions", ""),
                 1 if data.get("is_public", True) else 0,
+                user_id,
             ),
         )
         db.commit()
@@ -115,12 +129,11 @@ def register():
     db = get_db()
     try:
         cur = db.execute(
-            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-            (data["username"], data["email"], password_hash),
+            "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
+            (data["username"], data["email"], password_hash, "user"),
         )
         db.commit()
     except sqlite3.IntegrityError:
-        # we'll refine this to 409 & a nice message next
         return jsonify({"error": "username or email already exists"}), 409
 
     return (
@@ -146,7 +159,7 @@ def login():
 
     db = get_db()
     user = db.execute(
-        "SELECT id, username, password_hash FROM users WHERE username = ?",
+        "SELECT id, username, password_hash, role FROM users WHERE username = ?",
         (username,),
     ).fetchone()
     
@@ -154,8 +167,9 @@ def login():
         return jsonify({"error": "Invalid credentials"}), 401
 
     payload = {
-        "sub": str(user["id"]),  # subject must be a string
+        "sub": str(user["id"]),
         "exp": datetime.utcnow() + timedelta(hours=1),
+        "role": user["role"],
     }
     
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
@@ -169,10 +183,28 @@ def login():
     ), 200
 
 @app.patch("/recipes/<int:recipe_id>")
+@require_auth
 def update_recipe(recipe_id):
+    db = get_db()
+
+    recipe = db.execute(
+        "SELECT * FROM recipes WHERE id = ?",
+        (recipe_id,)
+    ).fetchone()
+
+    if recipe is None:
+        return jsonify({"error": "recipe not found"}), 404
+
+    user_id = g.current_user_id
+    role = g.current_role
+
+    if recipe["owner_id"] != user_id and role != "admin":
+        return jsonify({"error": "you do not have permission to update this recipe"}), 403
+
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "a JSON body is required"}), 400
+
     fields, values = [], []
     for column in ("title", "ingredients", "instructions"):
         if column in data:
@@ -184,7 +216,7 @@ def update_recipe(recipe_id):
     if not fields:
         return jsonify({"error": "nothing to update"}), 400
     values.append(recipe_id)
-    db = get_db()
+
     try:
         cur = db.execute(
             f"UPDATE recipes SET {', '.join(fields)} WHERE id = ?", values
@@ -200,12 +232,26 @@ def update_recipe(recipe_id):
     return jsonify(recipe_to_dict(row))
 
 @app.delete("/recipes/<int:recipe_id>")
+@require_auth
 def delete_recipe(recipe_id):
     db = get_db()
-    cur = db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
-    db.commit()
-    if cur.rowcount == 0:
+
+    recipe = db.execute(
+        "SELECT * FROM recipes WHERE id = ?",
+        (recipe_id,)
+    ).fetchone()
+
+    if recipe is None:
         return jsonify({"error": "recipe not found"}), 404
+
+    user_id = g.current_user_id
+    role = g.current_role
+
+    if recipe["owner_id"] != user_id and role != "admin":
+        return jsonify({"error": "you do not have permission to delete this recipe"}), 403
+
+    db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+    db.commit()
     return "", 204
 
 if __name__ == "__main__":
