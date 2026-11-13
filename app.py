@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 JWT_SECRET = os.getenv("JWT_SECRET")
-print("Loaded JWT_SECRET:", repr(JWT_SECRET))
 DATABASE = "recipes.db"
 
 app = Flask(__name__)
