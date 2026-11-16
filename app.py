@@ -66,18 +66,28 @@ def require_auth(fn):
 def hello():
     return jsonify({"message": "Recipe Box API", "recipes": "/recipes"})
 
+
 @app.get("/recipes")
+@require_auth
 def list_recipes():
-    rows = get_db().execute("SELECT * FROM recipes ORDER BY id").fetchall()
+    rows = get_db().execute(
+        "SELECT * FROM recipes ORDER BY id"
+    ).fetchall()
+
     return jsonify([recipe_to_dict(r) for r in rows])
 
+
 @app.get("/recipes/<int:recipe_id>")
+@require_auth
 def get_recipe(recipe_id):
     row = get_db().execute(
-        "SELECT * FROM recipes WHERE id = ?", (recipe_id,)
+        "SELECT * FROM recipes WHERE id = ?",
+        (recipe_id,)
     ).fetchone()
+
     if row is None:
         return jsonify({"error": "recipe not found"}), 404
+
     return jsonify(recipe_to_dict(row))
 
 @app.post("/recipes")
