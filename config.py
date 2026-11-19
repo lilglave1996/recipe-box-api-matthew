@@ -1,18 +1,22 @@
+
+import os
+
 class Config:
     DEBUG = False
     TESTING = False
-    DATABASE = "recipes.db"
+    DATABASE = os.getenv("DATABASE", "recipes.db")
 
 
 class DevelopmentConfig(Config):
-    DEBUG = True
-    DATABASE = "recipes_dev.db"
+    DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+    DATABASE = os.getenv("DATABASE", "recipes_dev.db")
 
 
 class TestingConfig(Config):
     TESTING = True
-    DATABASE = "recipes_test.db"
+    DATABASE = os.getenv("DATABASE", "recipes_test.db")
 
 
 class ProductionConfig(Config):
-    DATABASE = "recipes.db"
+    DEBUG = False
+    DATABASE = os.getenv("DATABASE", "recipes.db")
