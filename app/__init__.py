@@ -1,7 +1,8 @@
 import sqlite3, os, jwt
 from functools import wraps
 
-from flask import Flask, g, jsonify, request
+from config import DevelopmentConfig, TestingConfig, ProductionConfig
+from flask import Flask, g, jsonify, request, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ DATABASE = "recipes.db"
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DATABASE)
+        g.db = sqlite3.connect(current_app.config["DATABASE"])
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
@@ -58,8 +59,19 @@ def require_auth(fn):
         return fn(*args, **kwargs)
 
     return wrapper
-def create_app(config_name=None):
+def create_app(config_name="development"):
     app = Flask(__name__)
+
+    config_options = {
+        "development": DevelopmentConfig,
+        "testing": TestingConfig,
+        "production": ProductionConfig
+    }
+
+    if config_name not in config_options:
+        raise ValueError(f"Unknown configuration: {config_name}")
+
+    app.config.from_object(config_options[config_name])
 
     app.teardown_appcontext(close_db)
     @app.get("/")
