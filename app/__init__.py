@@ -11,8 +11,6 @@ load_dotenv()
 JWT_SECRET = os.getenv("JWT_SECRET")
 DATABASE = "recipes.db"
 
-app = Flask(__name__)
-
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DATABASE)
@@ -20,7 +18,6 @@ def get_db():
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
-@app.teardown_appcontext
 def close_db(exception):
     db = g.pop("db", None)
     if db is not None:
@@ -61,207 +58,207 @@ def require_auth(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+def create_app(config_name=None):
+    app = Flask(__name__)
 
-@app.get("/")
-def hello():
-    return jsonify({"message": "Recipe Box API", "recipes": "/recipes"})
+    app.teardown_appcontext(close_db)
+    @app.get("/")
+    def hello():
+        return jsonify({"message": "Recipe Box API", "recipes": "/recipes"})
+    @app.get("/recipes")
+    @require_auth
+    def list_recipes():
+        rows = get_db().execute(
+            "SELECT * FROM recipes ORDER BY id"
+        ).fetchall()
 
+        return jsonify([recipe_to_dict(r) for r in rows])
 
-@app.get("/recipes")
-@require_auth
-def list_recipes():
-    rows = get_db().execute(
-        "SELECT * FROM recipes ORDER BY id"
-    ).fetchall()
+    @app.get("/recipes/<int:recipe_id>")
+    @require_auth
+    def get_recipe(recipe_id):
+        row = get_db().execute(
+            "SELECT * FROM recipes WHERE id = ?",
+            (recipe_id,)
+        ).fetchone()
 
-    return jsonify([recipe_to_dict(r) for r in rows])
+        if row is None:
+            return jsonify({"error": "recipe not found"}), 404
 
+        return jsonify(recipe_to_dict(row))
 
-@app.get("/recipes/<int:recipe_id>")
-@require_auth
-def get_recipe(recipe_id):
-    row = get_db().execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,)
-    ).fetchone()
+    @app.post("/recipes")
+    @require_auth
+    def create_recipe():
+        user_id = g.current_user_id  # came from the token
 
-    if row is None:
-        return jsonify({"error": "recipe not found"}), 404
-
-    return jsonify(recipe_to_dict(row))
-
-@app.post("/recipes")
-@require_auth
-def create_recipe():
-    user_id = g.current_user_id  # came from the token
-
-    data = request.get_json(silent=True)
-    if not data or not data.get("title") or not data.get("ingredients"):
-        return jsonify({"error": "title and ingredients are required"}), 400
+        data = request.get_json(silent=True)
+        if not data or not data.get("title") or not data.get("ingredients"):
+            return jsonify({"error": "title and ingredients are required"}), 400
     
-    db = get_db()
+        db = get_db()
 
-    try:
-        cur = db.execute(
-            "INSERT INTO recipes (title, ingredients, instructions, is_public, owner_id)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (
-                data["title"],
-                data["ingredients"],
-                data.get("instructions", ""),
-                1 if data.get("is_public", True) else 0,
-                user_id,
+        try:
+            cur = db.execute(
+                "INSERT INTO recipes (title, ingredients, instructions, is_public, owner_id)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (
+                    data["title"],
+                    data["ingredients"],
+                    data.get("instructions", ""),
+                    1 if data.get("is_public", True) else 0,
+                    user_id,
+                ),
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return jsonify({"error": "a recipe with that title already exists"}), 409
+        row = db.execute(
+            "SELECT * FROM recipes WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+        return jsonify(recipe_to_dict(row)), 201
+
+    @app.post("/register")
+    def register():
+        data = request.get_json(silent=True)
+
+        if (
+            not data
+            or not data.get("username")
+            or not data.get("email")
+            or not data.get("password")
+        ):
+            return jsonify({"error": "username, email, and password are required"}), 400
+
+        password_hash = generate_password_hash(data["password"], method="pbkdf2:sha256")
+
+        db = get_db()
+        try:
+            cur = db.execute(
+                "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                (data["username"], data["email"], password_hash, "user"),
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return jsonify({"error": "username or email already exists"}), 409
+
+        return (
+            jsonify(
+                {
+                    "id": cur.lastrowid,
+                    "username": data["username"],
+                    "email": data["email"],
+                }
             ),
+            201,
         )
-        db.commit()
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "a recipe with that title already exists"}), 409
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?", (cur.lastrowid,)
-    ).fetchone()
-    return jsonify(recipe_to_dict(row)), 201
 
-@app.post("/register")
-def register():
-    data = request.get_json(silent=True)
+    @app.post("/login")
+    def login():
+        data = request.get_json(silent=True) or {}
 
-    if (
-        not data
-        or not data.get("username")
-        or not data.get("email")
-        or not data.get("password")
-    ):
-        return jsonify({"error": "username, email, and password are required"}), 400
+        username = data.get("username")
+        password = data.get("password")
 
-    password_hash = generate_password_hash(data["password"], method="pbkdf2:sha256")
+        if not username or not password:
+            return jsonify({"error": "username and password are required"}), 400
 
-    db = get_db()
-    try:
-        cur = db.execute(
-            "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
-            (data["username"], data["email"], password_hash, "user"),
-        )
-        db.commit()
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "username or email already exists"}), 409
-
-    return (
-        jsonify(
-            {
-                "id": cur.lastrowid,
-                "username": data["username"],
-                "email": data["email"],
-            }
-        ),
-        201,
-    )
-
-@app.post("/login")
-def login():
-    data = request.get_json(silent=True) or {}
-
-    username = data.get("username")
-    password = data.get("password")
-
-    if not username or not password:
-        return jsonify({"error": "username and password are required"}), 400
-
-    db = get_db()
-    user = db.execute(
-        "SELECT id, username, password_hash, role FROM users WHERE username = ?",
-        (username,),
-    ).fetchone()
+        db = get_db()
+        user = db.execute(
+            "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
     
-    if user is None or not check_password_hash(user["password_hash"], password):
-        return jsonify({"error": "Invalid credentials"}), 401
+        if user is None or not check_password_hash(user["password_hash"], password):
+            return jsonify({"error": "Invalid credentials"}), 401
 
-    payload = {
-        "sub": str(user["id"]),
-        "exp": datetime.utcnow() + timedelta(hours=1),
-        "role": user["role"],
-    }
-    
-    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-
-    return jsonify(
-        {
-            "id": user["id"],
-            "username": user["username"],
-            "token": token,
+        payload = {
+            "sub": str(user["id"]),
+            "exp": datetime.utcnow() + timedelta(hours=1),
+            "role": user["role"],
         }
-    ), 200
+    
+        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-@app.patch("/recipes/<int:recipe_id>")
-@require_auth
-def update_recipe(recipe_id):
-    db = get_db()
+        return jsonify(
+            {
+                "id": user["id"],
+                "username": user["username"],
+                "token": token,
+            }
+        ), 200
 
-    recipe = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,)
-    ).fetchone()
+    @app.patch("/recipes/<int:recipe_id>")
+    @require_auth
+    def update_recipe(recipe_id):
+        db = get_db()
 
-    if recipe is None:
-        return jsonify({"error": "recipe not found"}), 404
+        recipe = db.execute(
+            "SELECT * FROM recipes WHERE id = ?",
+            (recipe_id,)
+        ).fetchone()
 
-    user_id = g.current_user_id
-    role = g.current_role
+        if recipe is None:
+            return jsonify({"error": "recipe not found"}), 404
 
-    if recipe["owner_id"] != user_id and role != "admin":
-        return jsonify({"error": "you do not have permission to update this recipe"}), 403
+        user_id = g.current_user_id
+        role = g.current_role
 
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "a JSON body is required"}), 400
+        if recipe["owner_id"] != user_id and role != "admin":
+            return jsonify({"error": "you do not have permission to update this recipe"}), 403
 
-    fields, values = [], []
-    for column in ("title", "ingredients", "instructions"):
-        if column in data:
-            fields.append(f"{column} = ?")
-            values.append(data[column])
-    if "is_public" in data:
-        fields.append("is_public = ?")
-        values.append(1 if data["is_public"] else 0)
-    if not fields:
-        return jsonify({"error": "nothing to update"}), 400
-    values.append(recipe_id)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "a JSON body is required"}), 400
 
-    try:
-        cur = db.execute(
+        fields, values = [], []
+        for column in ("title", "ingredients", "instructions"):
+            if column in data:
+                fields.append(f"{column} = ?")
+                values.append(data[column])
+        if "is_public" in data:
+            fields.append("is_public = ?")
+            values.append(1 if data["is_public"] else 0)
+        if not fields:
+            return jsonify({"error": "nothing to update"}), 400
+        values.append(recipe_id)
+
+        try:
+            cur = db.execute(
             f"UPDATE recipes SET {', '.join(fields)} WHERE id = ?", values
-        )
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return jsonify({"error": "a recipe with that title already exists"}), 409
+        if cur.rowcount == 0:
+            return jsonify({"error": "recipe not found"}), 404
+        row = db.execute(
+            "SELECT * FROM recipes WHERE id = ?", (recipe_id,)
+        ).fetchone()
+        return jsonify(recipe_to_dict(row))
+
+    @app.delete("/recipes/<int:recipe_id>")
+    @require_auth
+    def delete_recipe(recipe_id):
+        db = get_db()
+
+        recipe = db.execute(
+            "SELECT * FROM recipes WHERE id = ?",
+            (recipe_id,)
+        ).fetchone()
+
+        if recipe is None:
+            return jsonify({"error": "recipe not found"}), 404
+
+        user_id = g.current_user_id
+        role = g.current_role
+
+        if recipe["owner_id"] != user_id and role != "admin":
+            return jsonify({"error": "you do not have permission to delete this recipe"}), 403
+
+        db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
         db.commit()
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "a recipe with that title already exists"}), 409
-    if cur.rowcount == 0:
-        return jsonify({"error": "recipe not found"}), 404
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?", (recipe_id,)
-    ).fetchone()
-    return jsonify(recipe_to_dict(row))
+        return "", 204
 
-@app.delete("/recipes/<int:recipe_id>")
-@require_auth
-def delete_recipe(recipe_id):
-    db = get_db()
-
-    recipe = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,)
-    ).fetchone()
-
-    if recipe is None:
-        return jsonify({"error": "recipe not found"}), 404
-
-    user_id = g.current_user_id
-    role = g.current_role
-
-    if recipe["owner_id"] != user_id and role != "admin":
-        return jsonify({"error": "you do not have permission to delete this recipe"}), 403
-
-    db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
-    db.commit()
-    return "", 204
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    
+    return app
