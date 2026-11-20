@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify
 
 from app.db import init_db, close_db
+from app.extensions import db
 
 # Load environment variables before importing configuration classes.
 load_dotenv()
@@ -32,6 +33,8 @@ def create_app(config_name="development"):
         raise ValueError(f"Unknown configuration: {config_name}")
 
     app.config.from_object(config_options[config_name])
+
+    db.init_app(app)
 
     init_db(app)
     app.teardown_appcontext(close_db)
