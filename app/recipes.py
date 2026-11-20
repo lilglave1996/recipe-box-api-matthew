@@ -2,7 +2,7 @@
 import sqlite3
 
 from flask import Blueprint, g, jsonify, request
-from app import require_auth
+from app.security import require_auth
 from app.services import (
     create_recipe_service,
     list_recipes_service,

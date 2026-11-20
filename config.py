@@ -14,7 +14,7 @@ class DevelopmentConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
-    DATABASE = os.getenv("DATABASE", "recipes_test.db")
+    DATABASE = "recipes_test.db"
 
 
 class ProductionConfig(Config):

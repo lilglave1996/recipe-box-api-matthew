@@ -32,7 +32,7 @@ def init_db(app):
                 ingredients TEXT NOT NULL,
                 instructions TEXT NOT NULL DEFAULT '',
                 is_public INTEGER NOT NULL DEFAULT 1,
-                owner_id TEXT
+                owner_id INTEGER
             );
         """)
 
