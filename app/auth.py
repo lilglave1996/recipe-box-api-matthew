@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from app import get_db, JWT_SECRET
+from app.db import get_db
+from app import JWT_SECRET
 
 auth_bp = Blueprint("auth", __name__)
 

@@ -1,9 +1,13 @@
 
+
 import sqlite3
 
 from flask import Blueprint, g, jsonify, request
+from app.services import create_recipe_service
 
-from app import get_db, recipe_to_dict, require_auth
+from app.db import get_db
+from app import recipe_to_dict, require_auth
+
 
 recipes_bp = Blueprint("recipes", __name__, url_prefix="/recipes")
 
@@ -32,38 +36,32 @@ def get_recipe(recipe_id):
     return jsonify(recipe_to_dict(row))
 
 
+
 @recipes_bp.post("")
 @require_auth
 def create_recipe():
-    user_id = g.current_user_id
-
     data = request.get_json(silent=True)
-    if not data or not data.get("title") or not data.get("ingredients"):
-        return jsonify({"error": "title and ingredients are required"}), 400
-
-    db = get_db()
 
     try:
-        cur = db.execute(
-            "INSERT INTO recipes (title, ingredients, instructions, is_public, owner_id)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (
-                data["title"],
-                data["ingredients"],
-                data.get("instructions", ""),
-                1 if data.get("is_public", True) else 0,
-                user_id,
-            ),
+        recipe, error = create_recipe_service(
+            data, g.current_user_id
         )
-        db.commit()
     except sqlite3.IntegrityError:
-        return jsonify({"error": "a recipe with that title already exists"}), 409
+        return jsonify({
+            "error": "a recipe with that title already exists"
+        }), 409
 
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?", (cur.lastrowid,)
-    ).fetchone()
+    if error:
+        return jsonify({"error": error}), 400
 
-    return jsonify(recipe_to_dict(row)), 201
+    return jsonify({
+        "id": recipe["id"],
+        "title": recipe["title"],
+        "ingredients": recipe["ingredients"],
+        "instructions": recipe["instructions"],
+        "is_public": bool(recipe["is_public"]),
+    }), 201
+
 
 
 @recipes_bp.patch("/<int:recipe_id>")

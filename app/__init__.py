@@ -3,6 +3,7 @@ import os
 import sqlite3
 import jwt
 
+from app.db import get_db, init_db, close_db
 from functools import wraps
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -89,6 +90,7 @@ def create_app(config_name="development"):
 
     app.config.from_object(config_options[config_name])
 
+    init_db(app)
     app.teardown_appcontext(close_db)
 
     @app.get("/")
