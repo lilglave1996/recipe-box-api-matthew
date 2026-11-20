@@ -42,28 +42,8 @@ def has_error(message):
 with tempfile.TemporaryDirectory() as temp_dir:
     database_path = os.path.join(temp_dir, "acceptance.db")
 
-    app = create_app("testing")
-    app.config["DATABASE"] = database_path
+    app = create_app("testing", database_path=database_path)
 
-    with sqlite3.connect(database_path) as db:
-        db.executescript("""
-            CREATE TABLE users (
-                id INTEGER PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
-                email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'user'
-            );
-
-            CREATE TABLE recipes (
-                id INTEGER PRIMARY KEY,
-                title TEXT NOT NULL UNIQUE,
-                ingredients TEXT NOT NULL,
-                instructions TEXT NOT NULL DEFAULT '',
-                is_public INTEGER NOT NULL DEFAULT 1,
-                owner_id INTEGER
-            );
-        """)
 
     client = app.test_client()
 

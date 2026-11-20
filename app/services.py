@@ -1,7 +1,8 @@
-
+from sqlalchemy import select
+from app.extensions import db
+from app.orm_models import Recipe
 from app.models import (
     insert_recipe,
-    list_all_recipes,
     find_recipe,
     update_recipe_record,
     delete_recipe_record,
@@ -29,11 +30,35 @@ def create_recipe_service(data, user_id):
 
 
 def list_recipes_service():
-    return list_all_recipes()
+    statement = select(Recipe).order_by(Recipe.id)
+    recipes = db.session.scalars(statement).all()
+
+    return [
+        {
+            "id": recipe.id,
+            "title": recipe.title,
+            "ingredients": recipe.ingredients,
+            "instructions": recipe.instructions,
+            "is_public": recipe.is_public,
+        }
+        for recipe in recipes
+    ]
 
 
 def get_recipe_service(recipe_id):
-    return find_recipe(recipe_id)
+    statement = select(Recipe).where(Recipe.id == recipe_id)
+    recipe = db.session.scalars(statement).one_or_none()
+
+    if recipe is None:
+        return None
+
+    return {
+        "id": recipe.id,
+        "title": recipe.title,
+        "ingredients": recipe.ingredients,
+        "instructions": recipe.instructions,
+        "is_public": recipe.is_public,
+    }
 
 
 def update_recipe_service(recipe_id, data, user_id, role):

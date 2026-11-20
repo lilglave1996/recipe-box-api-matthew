@@ -20,7 +20,7 @@ if not JWT_SECRET:
     )
 
 
-def create_app(config_name="development"):
+def create_app(config_name="development", database_path=None):
     app = Flask(__name__)
 
     config_options = {
@@ -34,10 +34,20 @@ def create_app(config_name="development"):
 
     app.config.from_object(config_options[config_name])
 
+    if database_path is not None:
+        app.config["DATABASE"] = database_path
+        app.config["SQLALCHEMY_DATABASE_URI"] = (
+            "sqlite:///" + os.path.abspath(database_path)
+        )
+
+    # Initialize SQLAlchemy after configuration
     db.init_app(app)
 
+    # Initialize existing SQLite database
     init_db(app)
     app.teardown_appcontext(close_db)
+
+    # Keep your existing blueprint registrations below
 
     @app.get("/")
     def hello():
