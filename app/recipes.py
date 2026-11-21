@@ -1,5 +1,5 @@
 
-import sqlite3
+from sqlalchemy.exc import IntegrityError
 
 from flask import Blueprint, g, jsonify, request
 from app.security import require_auth
@@ -48,16 +48,14 @@ def get_recipe(recipe_id):
 def create_recipe():
     data = request.get_json(silent=True)
 
-    try:
-        recipe, error = create_recipe_service(
-            data, g.current_user_id
-        )
-    except sqlite3.IntegrityError:
-        return jsonify({
-            "error": "a recipe with that title already exists"
-        }), 409
+    recipe, error = create_recipe_service(
+        data, g.current_user_id
+    )
 
     if error:
+        if error == "a recipe with that title already exists":
+            return jsonify({"error": error}), 409
+
         return jsonify({"error": error}), 400
 
     return jsonify(recipe_response(recipe)), 201
@@ -75,7 +73,7 @@ def update_recipe(recipe_id):
             g.current_user_id,
             g.current_role,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({
             "error": "a recipe with that title already exists"
         }), 409

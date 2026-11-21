@@ -1,5 +1,5 @@
 
-import sqlite3
+from sqlalchemy.exc import IntegrityError
 
 from flask import Blueprint, request, jsonify
 
@@ -28,7 +28,7 @@ def register():
             data["email"],
             data["password"]
         )
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({
             "error": "username or email already exists"
         }), 409

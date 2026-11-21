@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 
+from app.extensions import db
+from app import orm_models
 from app import create_app
 from app.security import JWT_SECRET
 
@@ -44,6 +46,8 @@ with tempfile.TemporaryDirectory() as temp_dir:
 
     app = create_app("testing", database_path=database_path)
 
+    with app.app_context():
+        db.create_all()
 
     client = app.test_client()
 

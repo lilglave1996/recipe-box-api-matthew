@@ -1,11 +1,14 @@
 
 import jwt
 
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import JWT_SECRET
-from app.user_models import create_user, get_user_by_username
+from sqlalchemy import select
+from app.extensions import db
+from app.orm_models import User
 
 
 def register_user(username, email, password):
@@ -14,28 +17,42 @@ def register_user(username, email, password):
         method="pbkdf2:sha256"
     )
 
-    user_id = create_user(username, email, password_hash)
+    user = User(
+        username=username,
+        email=email,
+        password_hash=password_hash,
+        role="user",
+    )
+
+    db.session.add(user)
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise
 
     return {
-        "id": user_id,
-        "username": username,
-        "email": email,
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
     }
 
 
 def authenticate_user(username, password):
-    user = get_user_by_username(username)
+    statement = select(User).where(User.username == username)
+    user = db.session.scalar(statement)
 
     if user is None:
         return None
 
-    if not check_password_hash(user["password_hash"], password):
+    if not check_password_hash(user.password_hash, password):
         return None
 
     payload = {
-        "sub": str(user["id"]),
+        "sub": str(user.id),
         "exp": datetime.utcnow() + timedelta(hours=1),
-        "role": user["role"],
+        "role": user.role,
     }
 
     token = jwt.encode(
@@ -45,7 +62,7 @@ def authenticate_user(username, password):
     )
 
     return {
-        "id": user["id"],
-        "username": user["username"],
+        "id": user.id,
+        "username": user.username,
         "token": token,
     }
