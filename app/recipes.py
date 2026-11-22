@@ -29,10 +29,7 @@ def recipe_response(recipe):
 
 @recipes_bp.get("")
 @require_auth
-@cache.cached(
-    timeout=lambda: current_app.config["CACHE_DEFAULT_TIMEOUT"],
-    key_prefix="recipes_list",
-)
+@cache.cached(key_prefix="recipes_list")
 def list_recipes():
     recipes = list_recipes_service()
     return jsonify([recipe_response(recipe) for recipe in recipes])
@@ -63,7 +60,7 @@ def create_recipe():
             return jsonify({"error": error}), 409
 
         return jsonify({"error": error}), 400
-
+    cache.delete("recipes_list")
     return jsonify(recipe_response(recipe)), 201
 
 
@@ -87,6 +84,7 @@ def update_recipe(recipe_id):
     if error:
         return jsonify({"error": error}), status
 
+    cache.delete("recipes_list")
     return jsonify(recipe_response(recipe)), 200
 
 
@@ -102,4 +100,5 @@ def delete_recipe(recipe_id):
     if error:
         return jsonify({"error": error}), status
 
+    cache.delete("recipes_list")
     return "", 204
