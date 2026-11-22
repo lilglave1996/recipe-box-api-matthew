@@ -10,6 +10,9 @@ class Config:
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    RATELIMIT_ENABLED = True
+    RATELIMIT_HEADERS_ENABLED = True
+
 
 class DevelopmentConfig(Config):
     DEBUG = os.getenv("DEBUG", "True").lower() == "true"
@@ -23,6 +26,8 @@ class TestingConfig(Config):
     DATABASE = "recipes_test.db"
 
     SQLALCHEMY_DATABASE_URI = f"sqlite:///{os.path.abspath(DATABASE)}"
+
+    RATELIMIT_ENABLED = False
 
 
 class ProductionConfig(Config):

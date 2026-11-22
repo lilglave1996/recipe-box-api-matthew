@@ -4,11 +4,13 @@ from sqlalchemy.exc import IntegrityError
 from flask import Blueprint, request, jsonify
 
 from app.auth_services import register_user, authenticate_user
+from app.extensions import limiter
 
 auth_bp = Blueprint("auth", __name__)
 
 
 @auth_bp.post("/register")
+@limiter.limit("3 per minute")
 def register():
     data = request.get_json(silent=True)
 
@@ -37,6 +39,7 @@ def register():
 
 
 @auth_bp.post("/login")
+@limiter.limit("5 per minute")
 def login():
     data = request.get_json(silent=True) or {}
 
