@@ -1,3 +1,4 @@
+
 from app.extensions import db
 
 
@@ -8,11 +9,9 @@ class User(db.Model):
     username = db.Column(db.Text, nullable=False, unique=True)
     email = db.Column(db.Text, nullable=False, unique=True)
     password_hash = db.Column(db.Text, nullable=False)
-    role = db.Column(
-        db.Text,
-        nullable=False,
-        server_default="user"
-    )
+    role = db.Column(db.Text, nullable=False, server_default="user")
+
+    recipes = db.relationship("Recipe", back_populates="owner")
 
 
 class Recipe(db.Model):
@@ -21,14 +20,19 @@ class Recipe(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.Text, nullable=False, unique=True)
     ingredients = db.Column(db.Text, nullable=False)
-    instructions = db.Column(
-        db.Text,
-        nullable=False,
-        server_default=""
-    )
+    instructions = db.Column(db.Text, nullable=False, server_default="")
     is_public = db.Column(
         db.Integer,
         nullable=False,
         server_default=db.text("1")
     )
-    owner_id = db.Column(db.Text, nullable=True)
+
+    owner_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True
+    )
+
+    owner = db.relationship("User", back_populates="recipes")
+
+    description = db.Column(db.Text, nullable=True)

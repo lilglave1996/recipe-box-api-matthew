@@ -1,0 +1,3 @@
+1. **Why cache:** The `GET /recipes` endpoint retrieves multiple recipes from the database, which could become expensive as the number of recipes and requests increases.
+2. **Caching costs:** Caching uses additional memory and could temporarily return outdated recipe information when recipes are added, updated, or deleted.
+3. **Cache timeout:** I would use a 60-second timeout because a recipe list can tolerate being slightly outdated for up to one minute without significantly affecting users.

@@ -14,6 +14,7 @@ def create_recipe_service(data, user_id):
         instructions=data.get("instructions", ""),
         is_public=1 if data.get("is_public", True) else 0,
         owner_id=user_id,
+        description=data.get("description"),
     )
 
     try:
@@ -29,6 +30,7 @@ def create_recipe_service(data, user_id):
         "ingredients": recipe.ingredients,
         "instructions": recipe.instructions,
         "is_public": recipe.is_public,
+        "description": recipe.description,
     }, None
 
 
@@ -43,6 +45,7 @@ def list_recipes_service():
             "ingredients": recipe.ingredients,
             "instructions": recipe.instructions,
             "is_public": recipe.is_public,
+            "description": recipe.description,
         }
         for recipe in recipes
     ]
@@ -61,6 +64,7 @@ def get_recipe_service(recipe_id):
         "ingredients": recipe.ingredients,
         "instructions": recipe.instructions,
         "is_public": recipe.is_public,
+        "description": recipe.description,
     }
 
 
@@ -70,15 +74,20 @@ def update_recipe_service(recipe_id, data, user_id, role):
     if recipe is None:
         return None, "recipe not found", 404
 
-    if int(recipe.owner_id) != user_id and role != "admin":
+    owner = recipe.owner
+
+    if role != "admin" and (
+        owner is None or owner.id != int(user_id)
+    ):
         return None, "you do not have permission to update this recipe", 403
+
 
     if not data:
         return None, "a JSON body is required", 400
 
     changes = {}
 
-    for column in ("title", "ingredients", "instructions"):
+    for column in ("title", "ingredients", "instructions", "description"):
         if column in data:
             changes[column] = data[column]
 
@@ -99,6 +108,7 @@ def update_recipe_service(recipe_id, data, user_id, role):
         "ingredients": recipe.ingredients,
         "instructions": recipe.instructions,
         "is_public": recipe.is_public,
+        "description": recipe.description,
     }, None, 200
 
 

@@ -1,7 +1,8 @@
 
 from sqlalchemy.exc import IntegrityError
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
+from app.extensions import cache
 from app.security import require_auth
 from app.services import (
     create_recipe_service,
@@ -22,11 +23,16 @@ def recipe_response(recipe):
         "ingredients": recipe["ingredients"],
         "instructions": recipe["instructions"],
         "is_public": bool(recipe["is_public"]),
+        "description": recipe["description"],
     }
 
 
 @recipes_bp.get("")
 @require_auth
+@cache.cached(
+    timeout=lambda: current_app.config["CACHE_DEFAULT_TIMEOUT"],
+    key_prefix="recipes_list",
+)
 def list_recipes():
     recipes = list_recipes_service()
     return jsonify([recipe_response(recipe) for recipe in recipes])

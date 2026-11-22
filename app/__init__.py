@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 
-from app.extensions import db
+from app.extensions import db, migrate, cache
 
 # Load environment variables before importing configuration classes.
 load_dotenv()
@@ -39,8 +39,10 @@ def create_app(config_name="development", database_path=None):
             "sqlite:///" + os.path.abspath(database_path)
         )
 
-    # Initialize SQLAlchemy after configuration
     db.init_app(app)
+    migrate.init_app(app, db)
+    cache.init_app(app)
+
 
     # Keep your existing blueprint registrations below
 

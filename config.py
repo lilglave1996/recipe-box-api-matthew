@@ -5,6 +5,8 @@ class Config:
     DEBUG = False
     TESTING = False
     DATABASE = os.getenv("DATABASE", "recipes.db")
+    CACHE_TYPE = "SimpleCache"
+    CACHE_DEFAULT_TIMEOUT = 60
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
