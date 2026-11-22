@@ -1,7 +1,48 @@
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db
-from app.orm_models import Recipe
+from app.orm_models import Recipe, Tag
+
+
+def resolve_tags(tag_names):
+    if not isinstance(tag_names, list):
+        raise ValueError("tags must be a list")
+
+    normalized_names = []
+    seen = set()
+
+    for name in tag_names:
+        if not isinstance(name, str):
+            raise ValueError("each tag must be a string")
+
+        normalized = name.strip().lower()
+
+        if not normalized:
+            raise ValueError("tag names cannot be empty")
+
+        if normalized not in seen:
+            seen.add(normalized)
+            normalized_names.append(normalized)
+
+    if not normalized_names:
+        return []
+
+    existing_tags = db.session.scalars(
+        select(Tag).where(Tag.name.in_(normalized_names))
+    ).all()
+
+    tags_by_name = {
+        tag.name: tag for tag in existing_tags
+    }
+
+    for name in normalized_names:
+        if name not in tags_by_name:
+            tag = Tag(name=name)
+            db.session.add(tag)
+            tags_by_name[name] = tag
+
+    return [tags_by_name[name] for name in normalized_names]
+
 
 
 def create_recipe_service(data, user_id):
@@ -18,8 +59,16 @@ def create_recipe_service(data, user_id):
     )
 
     try:
+        if "tags" in data:
+            recipe.tags = resolve_tags(data["tags"])
+
         db.session.add(recipe)
         db.session.commit()
+
+    except ValueError as error:
+        db.session.rollback()
+        return None, str(error)
+
     except IntegrityError:
         db.session.rollback()
         return None, "a recipe with that title already exists"
@@ -31,7 +80,10 @@ def create_recipe_service(data, user_id):
         "instructions": recipe.instructions,
         "is_public": recipe.is_public,
         "description": recipe.description,
+        "tags": sorted(tag.name for tag in recipe.tags),
     }, None
+
+
 
 
 def list_recipes_service():
@@ -46,9 +98,12 @@ def list_recipes_service():
             "instructions": recipe.instructions,
             "is_public": recipe.is_public,
             "description": recipe.description,
+            "tags": sorted(tag.name for tag in recipe.tags),
         }
         for recipe in recipes
     ]
+
+
 
 
 def get_recipe_service(recipe_id):
@@ -65,7 +120,10 @@ def get_recipe_service(recipe_id):
         "instructions": recipe.instructions,
         "is_public": recipe.is_public,
         "description": recipe.description,
+        "tags": sorted(tag.name for tag in recipe.tags),
     }
+
+
 
 
 def update_recipe_service(recipe_id, data, user_id, role):
@@ -81,7 +139,6 @@ def update_recipe_service(recipe_id, data, user_id, role):
     ):
         return None, "you do not have permission to update this recipe", 403
 
-
     if not data:
         return None, "a JSON body is required", 400
 
@@ -94,13 +151,25 @@ def update_recipe_service(recipe_id, data, user_id, role):
     if "is_public" in data:
         changes["is_public"] = 1 if data["is_public"] else 0
 
-    if not changes:
+    if not changes and "tags" not in data:
         return None, "nothing to update", 400
 
-    for column, value in changes.items():
-        setattr(recipe, column, value)
+    try:
+        for column, value in changes.items():
+            setattr(recipe, column, value)
 
-    db.session.commit()
+        if "tags" in data:
+            recipe.tags = resolve_tags(data["tags"])
+
+        db.session.commit()
+
+    except ValueError as error:
+        db.session.rollback()
+        return None, str(error), 400
+
+    except IntegrityError:
+        db.session.rollback()
+        return None, "a recipe with that title already exists", 409
 
     return {
         "id": recipe.id,
@@ -109,7 +178,9 @@ def update_recipe_service(recipe_id, data, user_id, role):
         "instructions": recipe.instructions,
         "is_public": recipe.is_public,
         "description": recipe.description,
+        "tags": sorted(tag.name for tag in recipe.tags),
     }, None, 200
+
 
 
 def delete_recipe_service(recipe_id, user_id, role):

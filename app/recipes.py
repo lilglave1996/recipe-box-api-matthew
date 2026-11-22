@@ -16,6 +16,7 @@ from app.services import (
 recipes_bp = Blueprint("recipes", __name__, url_prefix="/recipes")
 
 
+
 def recipe_response(recipe):
     return {
         "id": recipe["id"],
@@ -24,7 +25,9 @@ def recipe_response(recipe):
         "instructions": recipe["instructions"],
         "is_public": bool(recipe["is_public"]),
         "description": recipe["description"],
+        "tags": recipe["tags"],
     }
+
 
 
 @recipes_bp.get("")
