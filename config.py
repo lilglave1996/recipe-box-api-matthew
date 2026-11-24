@@ -5,6 +5,9 @@ class Config:
     DEBUG = False
     TESTING = False
     DATABASE = os.getenv("DATABASE", "recipes.db")
+    SLOW_SERVICE_BASE_URL = os.getenv(
+        "SLOW_SERVICE_BASE_URL", "http://127.0.0.1:5001"
+    )
     CACHE_TYPE = "SimpleCache"
     CACHE_DEFAULT_TIMEOUT = 60
 
