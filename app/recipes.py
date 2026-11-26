@@ -11,7 +11,9 @@ from app.services import (
     update_recipe_service,
     delete_recipe_service,
 )
-
+import asyncio
+import httpx
+import time
 
 recipes_bp = Blueprint("recipes", __name__, url_prefix="/recipes")
 
@@ -105,3 +107,35 @@ def delete_recipe(recipe_id):
 
     cache.delete("recipes_list")
     return "", 204
+
+@recipes_bp.get("/nutrition/async")
+@require_auth
+async def get_nutrition_async():
+    start_time = time.perf_counter()
+
+    base_url = current_app.config["SLOW_SERVICE_BASE_URL"]
+    ingredients = ["eggs", "tomatoes", "peppers"]
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        requests = [
+            client.get(f"{base_url}/nutrition/{ingredient}")
+            for ingredient in ingredients
+        ]
+
+        responses = await asyncio.gather(*requests)
+
+    results = [
+        {
+            "ingredient": ingredient,
+            "status_code": response.status_code,
+            "data": response.json()
+        }
+        for ingredient, response in zip(ingredients, responses)
+    ]
+
+    elapsed_time = time.perf_counter() - start_time
+
+    return jsonify({
+        "results": results,
+        "elapsed_seconds": round(elapsed_time, 2)
+    })

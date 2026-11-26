@@ -3,7 +3,7 @@ import os
 import jwt
 
 from functools import wraps
-from flask import g, jsonify, request
+from flask import current_app, g, jsonify, request
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -58,6 +58,6 @@ def require_auth(fn):
 
         g.current_role = claims.get("role")
 
-        return fn(*args, **kwargs)
+        return current_app.ensure_sync(fn)(*args, **kwargs)
 
     return wrapper
